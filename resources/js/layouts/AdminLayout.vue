@@ -1,14 +1,43 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import AdminSidebar from '../components/admin/AdminSidebar.vue'
 import AdminNavbar from '../components/admin/AdminNavbar.vue'
+import api from '../services/api'
 
-const admin = {
+const router = useRouter()
+const sidebarOpen = ref(false)
+const loading = ref(true)
+
+const admin = ref({
   name: 'Admin',
   email: 'admin@citygym.com',
+  role: 'Administrator',
+})
+
+const fetchAdmin = async () => {
+  try {
+    const { data } = await api.get('/api/admin/me')
+
+    if (data?.authenticated && data?.user) {
+      admin.value = {
+        name: data.user.name || 'Admin',
+        email: data.user.email || 'admin@citygym.com',
+        role: data.user.role || 'Administrator',
+      }
+    } else {
+      router.replace('/admin/login')
+    }
+  } catch (error) {
+    router.replace('/admin/login')
+  } finally {
+    loading.value = false
+  }
 }
 
-const sidebarOpen = ref(false)
+onMounted(() => {
+  fetchAdmin()
+})
 </script>
 
 <template>
@@ -28,14 +57,18 @@ const sidebarOpen = ref(false)
       @click="sidebarOpen = false"
     ></div>
 
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex flex-1 flex-col overflow-hidden">
       <AdminNavbar
         :admin="admin"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       />
 
       <main class="flex-1 overflow-y-auto bg-gray-100 p-6">
-        <router-view />
+        <div v-if="loading" class="py-10 text-center text-gray-500">
+          Loading admin panel...
+        </div>
+
+        <router-view v-else />
       </main>
     </div>
   </div>

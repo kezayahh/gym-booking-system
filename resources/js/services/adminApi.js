@@ -1,12 +1,17 @@
 import axios from 'axios'
 
+const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
 const adminApi = axios.create({
-  baseURL: '/admin-api',
+  baseURL: '/api/admin',
+  withCredentials: true,
   headers: {
     'X-Requested-With': 'XMLHttpRequest',
-    Accept: 'application/json',
+    'Accept': 'application/json',
+    ...(token ? { 'X-CSRF-TOKEN': token } : {}),
   },
-  withCredentials: true,
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
 })
 
 export default adminApi

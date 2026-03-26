@@ -1,102 +1,115 @@
 <script setup>
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import api from '../../services/api'
 
-defineProps({
+const props = defineProps({
+  sidebarOpen: {
+    type: Boolean,
+    default: false,
+  },
   admin: {
     type: Object,
     default: () => ({
       name: 'Admin',
       email: 'admin@citygym.com',
+      role: 'Administrator',
     }),
   },
-  sidebarOpen: {
-    type: Boolean,
-    default: false,
+  logoUrl: {
+    type: String,
+    default: '/images/logo.png',
   },
 })
 
 const emit = defineEmits(['close'])
-const route = useRoute()
 
-const menuItems = [
-  { name: 'Dashboard', path: '/admin/dashboard', icon: 'fas fa-gauge-high' },
-  { name: 'Users', path: '/admin/users', icon: 'fas fa-users' },
-  { name: 'Schedules', path: '/admin/schedules', icon: 'fas fa-calendar-days' },
-  { name: 'Bookings', path: '/admin/bookings', icon: 'fas fa-calendar-check' },
-  { name: 'Payments', path: '/admin/payments', icon: 'fas fa-money-bill-wave' },
-  { name: 'Refunds', path: '/admin/refunds', icon: 'fas fa-rotate-left' },
-  { name: 'Reports', path: '/admin/reports', icon: 'fas fa-chart-bar' },
-  { name: 'Profile', path: '/admin/profile', icon: 'fas fa-user-gear' },
+const route = useRoute()
+const router = useRouter()
+
+const navItems = [
+  { key: 'admin.dashboard', label: 'Dashboard', to: '/admin/dashboard', icon: 'fas fa-tachometer-alt' },
+  { key: 'admin.users', label: 'Users', to: '/admin/users', icon: 'fas fa-users' },
+  { key: 'admin.schedules', label: 'Schedules', to: '/admin/schedules', icon: 'fas fa-calendar-alt' },
+  { key: 'admin.bookings', label: 'Bookings', to: '/admin/bookings', icon: 'fas fa-calendar-check' },
+  { key: 'admin.payments', label: 'Payments', to: '/admin/payments', icon: 'fas fa-money-bill-wave' },
+  { key: 'admin.refunds', label: 'Refunds', to: '/admin/refunds', icon: 'fas fa-undo-alt' },
+  { key: 'admin.reports', label: 'Reports', to: '/admin/reports', icon: 'fas fa-chart-bar' },
+  { key: 'admin.profile', label: 'Profile', to: '/admin/profile', icon: 'fas fa-user-cog' },
 ]
 
-const csrfToken =
-  typeof window !== 'undefined'
-    ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-    : ''
+const isActive = (routeKey) => route.name === routeKey
 
-const isActive = (path) => route.path === path
+const handleNavigate = () => {
+  emit('close')
+}
+
+const logout = async () => {
+  try {
+    await api.post('/admin/logout')
+    localStorage.removeItem('user')
+    router.replace('/admin/login')
+  } catch (error) {
+    console.error('Logout failed:', error)
+    router.replace('/admin/login')
+  }
+}
 </script>
 
 <template>
   <aside
-    class="fixed inset-y-0 left-0 z-50 w-64 flex-shrink-0 overflow-y-auto transition-all duration-300 transform md:relative md:translate-x-0"
+    class="fixed inset-y-0 left-0 z-50 w-64 flex-shrink-0 overflow-y-auto transition-all duration-300 md:static md:translate-x-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
-    style="background-color: #0b3c3d;"
+    style="background-color: var(--primary-dark);"
   >
     <div class="p-6">
-      <div class="flex justify-center mb-8">
+      <div class="mb-8 flex justify-center">
         <div class="flex flex-col items-center text-center">
-          <img
-            :src="'/images/logo.png'"
-            alt="Gym Logo"
-            class="h-24 w-24 object-contain"
-          >
-          <h1 class="text-lg font-bold text-white mt-3">City Gymnasium</h1>
+          <img :src="logoUrl" alt="Gym" class="mx-auto h-24 w-24 object-contain" />
+          <h1 class="mt-3 text-xl font-bold text-white">City Gymnasium</h1>
           <p class="text-xs text-blue-200">Admin Panel</p>
         </div>
       </div>
 
-      <div class="bg-white/10 rounded-lg p-4 mb-6">
+      <div class="mb-6 rounded-lg bg-white/10 p-4">
         <div class="flex items-center space-x-3">
-          <img
-            :src="`https://ui-avatars.com/api/?name=${encodeURIComponent(admin.name || 'Admin')}&background=ffffff&color=0b3c3d`"
-            alt="Admin Avatar"
-            class="w-12 h-12 rounded-full border-2 border-white"
-          >
-          <div class="flex-1">
-            <p class="text-white font-semibold text-sm">{{ admin.name || 'Admin' }}</p>
-            <p class="text-blue-200 text-xs">Administrator</p>
+          <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-yellow-400 to-orange-500">
+            <i class="fas fa-user-shield text-lg text-white"></i>
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <p class="truncate text-sm font-semibold text-white">{{ props.admin.name }}</p>
+            <p class="truncate text-xs text-blue-200">{{ props.admin.email }}</p>
           </div>
         </div>
       </div>
 
       <nav class="space-y-2">
         <router-link
-          v-for="item in menuItems"
-          :key="item.path"
-          :to="item.path"
-          class="flex items-center space-x-4 px-4 py-3 rounded-lg transition-colors duration-200"
-          :class="isActive(item.path)
-            ? 'bg-white/20 text-white'
-            : 'text-blue-100 hover:bg-white/10 hover:text-white'"
-          @click="emit('close')"
+          v-for="item in navItems"
+          :key="item.key"
+          :to="item.to"
+          class="flex items-center space-x-3 rounded-lg px-4 py-3 transition-colors duration-200"
+          :class="
+            isActive(item.key)
+              ? 'bg-white/20 text-white'
+              : 'text-blue-100 hover:bg-white/10 hover:text-white'
+          "
+          @click="handleNavigate"
         >
-          <i :class="[item.icon, 'w-6 text-center text-lg']"></i>
-          <span class="font-medium">{{ item.name }}</span>
+          <i :class="[item.icon, 'w-5']"></i>
+          <span class="font-medium">{{ item.label }}</span>
         </router-link>
 
-        <div class="border-t border-white/20 my-4"></div>
+        <div class="my-4 border-t border-white/20"></div>
 
-        <form method="POST" action="/logout">
-          <input type="hidden" name="_token" :value="csrfToken">
-          <button
-            type="submit"
-            class="w-full flex items-center space-x-4 px-4 py-3 rounded-lg transition-colors duration-200 text-red-300 hover:bg-red-500/20 hover:text-red-200"
-          >
-            <i class="fas fa-right-from-bracket w-6 text-center text-lg"></i>
-            <span class="font-medium">Logout</span>
-          </button>
-        </form>
+        <button
+          type="button"
+          @click="logout"
+          class="flex w-full items-center space-x-3 rounded-lg px-4 py-3 text-red-300 transition-colors duration-200 hover:bg-red-500/20 hover:text-red-200"
+        >
+          <i class="fas fa-sign-out-alt w-5"></i>
+          <span class="font-medium">Logout</span>
+        </button>
       </nav>
     </div>
   </aside>

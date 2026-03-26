@@ -1,5 +1,8 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import api from '../../services/api'
+
+const router = useRouter()
 
 defineProps({
   admin: {
@@ -7,127 +10,55 @@ defineProps({
     default: () => ({
       name: 'Admin',
       email: 'admin@citygym.com',
+      role: 'Administrator',
     }),
   },
 })
 
 defineEmits(['toggle-sidebar'])
 
-const notifications = [
-  { id: 1, title: 'New booking received', time: '5 minutes ago' },
-  { id: 2, title: 'Payment confirmed', time: '1 hour ago' },
-]
-
-const notificationOpen = ref(false)
-const profileOpen = ref(false)
-const notificationRef = ref(null)
-const profileRef = ref(null)
-
-const handleClickOutside = (event) => {
-  if (notificationRef.value && !notificationRef.value.contains(event.target)) {
-    notificationOpen.value = false
-  }
-
-  if (profileRef.value && !profileRef.value.contains(event.target)) {
-    profileOpen.value = false
+const logout = async () => {
+  try {
+    await api.post('/admin/logout')
+    localStorage.removeItem('user')
+    router.replace('/admin/login')
+  } catch (error) {
+    console.error('Logout failed:', error)
+    router.replace('/admin/login')
   }
 }
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 </script>
 
 <template>
-  <header class="bg-white shadow-sm border-b border-gray-200">
-    <div class="flex items-center justify-between px-6 py-4">
-      <div class="flex items-center space-x-4">
-        <button
-          class="text-gray-700 hover:text-gray-900 focus:outline-none md:hidden"
-          @click="$emit('toggle-sidebar')"
-        >
-          <i class="fas fa-bars text-xl"></i>
-        </button>
+  <header class="bg-white shadow-sm border-b px-4 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <button
+        type="button"
+        class="md:hidden inline-flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+        @click="$emit('toggle-sidebar')"
+      >
+        <i class="fas fa-bars text-lg"></i>
+      </button>
+
+      <div>
+        <h1 class="text-lg font-bold text-gray-800">Gym Booking System</h1>
+        <p class="text-sm text-gray-500">Admin Panel</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <div class="hidden sm:block text-right">
+        <p class="text-sm font-semibold text-gray-800">{{ admin.name }}</p>
+        <p class="text-xs text-gray-500">{{ admin.email }}</p>
       </div>
 
-      <div class="flex items-center space-x-4">
-        <div ref="notificationRef" class="relative">
-          <button
-            class="relative text-gray-700 hover:text-gray-900 focus:outline-none"
-            @click.stop="notificationOpen = !notificationOpen"
-          >
-            <i class="fas fa-bell text-xl"></i>
-            <span class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
-          </button>
-
-          <div
-            v-if="notificationOpen"
-            class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
-          >
-            <div class="p-4 border-b border-gray-200" style="background-color: #0b3c3d;">
-              <h3 class="font-semibold text-white">Notifications</h3>
-            </div>
-
-            <div class="max-h-64 overflow-y-auto">
-              <a
-                v-for="item in notifications"
-                :key="item.id"
-                href="/admin/notifications"
-                class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100"
-              >
-                <p class="text-sm text-gray-800 font-medium">{{ item.title }}</p>
-                <p class="text-xs text-gray-500 mt-1">{{ item.time }}</p>
-              </a>
-            </div>
-
-            <div class="p-3 text-center border-t border-gray-200">
-              <a href="/admin/notifications" class="text-sm hover:underline" style="color: #0b3c3d;">
-                View all notifications
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <div ref="profileRef" class="relative">
-          <button
-            class="flex items-center space-x-2 focus:outline-none"
-            @click.stop="profileOpen = !profileOpen"
-          >
-            <img
-              :src="`https://ui-avatars.com/api/?name=${encodeURIComponent(admin.name || 'Admin')}&background=0b3c3d&color=fff`"
-              alt="Profile"
-              class="w-10 h-10 rounded-full border-2 border-gray-400"
-            >
-            <span class="hidden md:block text-sm font-medium text-gray-700">
-              {{ admin.name || 'Admin' }}
-            </span>
-            <i class="fas fa-chevron-down text-xs text-gray-600"></i>
-          </button>
-
-          <div
-            v-if="profileOpen"
-            class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
-          >
-            <div class="p-3 border-b border-gray-200">
-              <p class="text-sm font-medium text-gray-800">{{ admin.name || 'Admin' }}</p>
-              <p class="text-xs text-gray-500">{{ admin.email || 'admin@citygym.com' }}</p>
-            </div>
-
-            <div class="py-2">
-              <a
-                href="/admin/profile"
-                class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              >
-                <i class="fas fa-user mr-2"></i> My Profile
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
+      <button
+        @click="logout"
+        class="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition"
+      >
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+      </button>
     </div>
   </header>
 </template>

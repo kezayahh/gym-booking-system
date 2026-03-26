@@ -13,67 +13,144 @@ use Carbon\Carbon;
 
 class BookingManagementController extends Controller
 {
+    public function stats()
+    {
+        $today = Carbon::today();
+
+        $todayRevenue = Booking::whereDate('booking_date', $today)
+            ->whereHas('payment', function ($q) {
+                $q->where('status', 'completed');
+            })
+            ->sum('total_amount');
+
+        return response()->json([
+            'totalBookings' => Booking::count(),
+            'pendingBookings' => Booking::where('status', 'pending')->count(),
+            'confirmedBookings' => Booking::where('status', 'confirmed')->count(),
+            'todayRevenue' => $todayRevenue,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $query = Booking::with(['user', 'schedule', 'payment']);
 
-        // Search
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('booking_number', 'like', "%{$search}%")
-                  ->orWhereHas('user', function($userQuery) use ($search) {
-                      $userQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                  });
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
             });
         }
 
-        // Filter by status
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // Filter by date range
         if ($request->filled('date_from')) {
             $query->whereDate('booking_date', '>=', $request->date_from);
         }
+
         if ($request->filled('date_to')) {
             $query->whereDate('booking_date', '<=', $request->date_to);
         }
 
-        // Sort
-        $sortBy = $request->get('sort_by', 'created_at');
-        $sortOrder = $request->get('sort_order', 'desc');
-        $query->orderBy($sortBy, $sortOrder);
+        $bookings = $query
+            ->latest()
+            ->get()
+            ->map(function ($booking) {
+                $scheduleDate = $booking->schedule?->date
+                    ? Carbon::parse($booking->schedule->date)
+                    : null;
 
-        $bookings = $query->latest()->paginate(10);
-        
-        // Statistics
-        $totalBookings = Booking::count();
-        $pendingBookings = Booking::where('status', 'pending')->count();
-        $confirmedBookings = Booking::where('status', 'confirmed')->count();
-        $completedBookings = Booking::where('status', 'completed')->count();
-        $cancelledBookings = Booking::where('status', 'cancelled')->count();
-        
-        $todayBookings = Booking::whereDate('booking_date', Carbon::today())->count();
-        $todayRevenue = Booking::whereDate('booking_date', Carbon::today())
-            ->whereHas('payment', function($q) {
-                $q->where('status', 'completed');
-            })->sum('total_amount');
+                return [
+                    'id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'number_of_slots' => $booking->number_of_slots,
+                    'total_amount' => (float) $booking->total_amount,
+                    'special_requests' => $booking->special_requests,
+                    'status' => $booking->status,
+                    'booking_date' => $booking->booking_date
+                        ? Carbon::parse($booking->booking_date)->format('Y-m-d')
+                        : null,
+                    'created_at' => $booking->created_at?->toDateTimeString(),
+                    'created_at_formatted' => $booking->created_at
+                        ? $booking->created_at->format('M d, Y h:i A')
+                        : '',
+                    'user' => $booking->user ? [
+                        'id' => $booking->user->id,
+                        'name' => $booking->user->name,
+                        'email' => $booking->user->email,
+                    ] : null,
+                    'schedule' => $booking->schedule ? [
+                        'id' => $booking->schedule->id,
+                        'date' => $scheduleDate ? $scheduleDate->format('Y-m-d') : null,
+                        'date_formatted' => $scheduleDate ? $scheduleDate->format('M d, Y') : '',
+                        'timeSlot' => date('h:i A', strtotime($booking->schedule->start_time)) . ' - ' . date('h:i A', strtotime($booking->schedule->end_time)),
+                        'start_time' => $booking->schedule->start_time,
+                        'end_time' => $booking->schedule->end_time,
+                    ] : null,
+                    'payment' => $booking->payment ? [
+                        'id' => $booking->payment->id,
+                        'status' => $booking->payment->status,
+                        'amount' => (float) $booking->payment->amount,
+                    ] : null,
+                ];
+            })
+            ->values();
 
-        // Get available schedules for booking creation
-        $availableSchedules = Schedule::where('status', 'available')
-            ->where('date', '>=', Carbon::today())
+        return response()->json([
+            'bookings' => $bookings,
+        ]);
+    }
+
+    public function activeUsers(Request $request)
+    {
+        $search = $request->get('search', '');
+
+        $users = User::where('role', 'user')
+            ->where('status', 'active')
+            ->where(function ($q) use ($search) {
+                if ($search !== '') {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                }
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        return response()->json([
+            'users' => $users,
+        ]);
+    }
+
+    public function availableSchedules()
+    {
+        $schedules = Schedule::where('status', 'available')
+            ->whereDate('date', '>=', Carbon::today())
             ->orderBy('date')
             ->orderBy('start_time')
-            ->get();
+            ->get()
+            ->map(function ($schedule) {
+                $availableSlots = max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots);
 
-        return view('admin.booking-management', compact(
-            'bookings', 'totalBookings', 'pendingBookings', 'confirmedBookings',
-            'completedBookings', 'cancelledBookings', 'todayBookings', 
-            'todayRevenue', 'availableSchedules'
-        ));
+                return [
+                    'id' => $schedule->id,
+                    'date' => $schedule->date ? Carbon::parse($schedule->date)->format('Y-m-d') : null,
+                    'date_formatted' => $schedule->date ? Carbon::parse($schedule->date)->format('M d, Y') : '',
+                    'timeSlot' => date('h:i A', strtotime($schedule->start_time)) . ' - ' . date('h:i A', strtotime($schedule->end_time)),
+                    'availableSlots' => $availableSlots,
+                    'price_per_slot' => (float) $schedule->price_per_slot,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'schedules' => $schedules,
+        ]);
     }
 
     public function store(Request $request)
@@ -88,7 +165,7 @@ class BookingManagementController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -96,16 +173,24 @@ class BookingManagementController extends Controller
             DB::beginTransaction();
 
             $schedule = Schedule::findOrFail($request->schedule_id);
-            
-            // Check if schedule can accommodate booking
-            if (!$schedule->canBook($request->number_of_slots)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Schedule cannot accommodate the requested number of slots.'
-                ], 422);
+
+            if (method_exists($schedule, 'canBook')) {
+                if (!$schedule->canBook($request->number_of_slots)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Schedule cannot accommodate the requested number of slots.',
+                    ], 422);
+                }
+            } else {
+                $availableSlots = max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots);
+                if ((int) $request->number_of_slots > $availableSlots) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Schedule cannot accommodate the requested number of slots.',
+                    ], 422);
+                }
             }
 
-            // Create booking
             $booking = Booking::create([
                 'user_id' => $request->user_id,
                 'schedule_id' => $request->schedule_id,
@@ -113,36 +198,32 @@ class BookingManagementController extends Controller
                 'total_amount' => $schedule->price_per_slot * $request->number_of_slots,
                 'booking_date' => $schedule->date,
                 'special_requests' => $request->special_requests,
-                'status' => 'confirmed', // Admin bookings are auto-confirmed
+                'status' => 'confirmed',
             ]);
 
-            // Update schedule slots
-            $schedule->incrementBookedSlots($request->number_of_slots);
-
-            // Log activity
-            activity()
-                ->causedBy(auth()->user())
-                ->performedOn($booking)
-                ->withProperties([
-                    'booking_number' => $booking->booking_number,
-                    'user_id' => $booking->user_id,
-                    'schedule_id' => $booking->schedule_id
-                ])
-                ->log('Admin created booking: ' . $booking->booking_number);
+            if (method_exists($schedule, 'incrementBookedSlots')) {
+                $schedule->incrementBookedSlots($request->number_of_slots);
+            } else {
+                $schedule->booked_slots = (int) $schedule->booked_slots + (int) $request->number_of_slots;
+                if ($schedule->booked_slots >= $schedule->total_capacity) {
+                    $schedule->status = 'full';
+                }
+                $schedule->save();
+            }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Booking created successfully!',
-                'booking' => $booking->load(['user', 'schedule'])
+                'booking' => $booking->load(['user', 'schedule']),
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create booking: ' . $e->getMessage()
+                'message' => 'Failed to create booking: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -154,64 +235,8 @@ class BookingManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'booking' => $booking
+            'booking' => $booking,
         ]);
-    }
-
-    public function update(Request $request, $id)
-    {
-        $booking = Booking::findOrFail($id);
-
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:pending,confirmed,completed,cancelled',
-            'special_requests' => 'nullable|string|max:500',
-            'admin_notes' => 'nullable|string|max:500',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $oldStatus = $booking->status;
-            $oldData = $booking->toArray();
-
-            $booking->update([
-                'status' => $request->status,
-                'special_requests' => $request->special_requests,
-            ]);
-
-            // Log activity
-            activity()
-                ->causedBy(auth()->user())
-                ->performedOn($booking)
-                ->withProperties([
-                    'old_status' => $oldStatus,
-                    'new_status' => $request->status,
-                    'booking_number' => $booking->booking_number
-                ])
-                ->log('Admin updated booking: ' . $booking->booking_number);
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Booking updated successfully!',
-                'booking' => $booking->load(['user', 'schedule'])
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update booking: ' . $e->getMessage()
-            ], 500);
-        }
     }
 
     public function confirm($id)
@@ -221,34 +246,32 @@ class BookingManagementController extends Controller
         if ($booking->status !== 'pending') {
             return response()->json([
                 'success' => false,
-                'message' => 'Only pending bookings can be confirmed.'
+                'message' => 'Only pending bookings can be confirmed.',
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            $booking->confirm();
-
-            // Log activity
-            activity()
-                ->causedBy(auth()->user())
-                ->performedOn($booking)
-                ->withProperties(['booking_number' => $booking->booking_number])
-                ->log('Admin confirmed booking: ' . $booking->booking_number);
+            if (method_exists($booking, 'confirm')) {
+                $booking->confirm();
+            } else {
+                $booking->status = 'confirmed';
+                $booking->save();
+            }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Booking confirmed successfully!'
+                'message' => 'Booking confirmed successfully!',
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to confirm booking: ' . $e->getMessage()
+                'message' => 'Failed to confirm booking: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -260,34 +283,32 @@ class BookingManagementController extends Controller
         if ($booking->status !== 'confirmed') {
             return response()->json([
                 'success' => false,
-                'message' => 'Only confirmed bookings can be completed.'
+                'message' => 'Only confirmed bookings can be completed.',
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            $booking->complete();
-
-            // Log activity
-            activity()
-                ->causedBy(auth()->user())
-                ->performedOn($booking)
-                ->withProperties(['booking_number' => $booking->booking_number])
-                ->log('Admin completed booking: ' . $booking->booking_number);
+            if (method_exists($booking, 'complete')) {
+                $booking->complete();
+            } else {
+                $booking->status = 'completed';
+                $booking->save();
+            }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Booking completed successfully!'
+                'message' => 'Booking completed successfully!',
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to complete booking: ' . $e->getMessage()
+                'message' => 'Failed to complete booking: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -303,44 +324,48 @@ class BookingManagementController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         if (!in_array($booking->status, ['pending', 'confirmed'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'This booking cannot be cancelled.'
+                'message' => 'This booking cannot be cancelled.',
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            $booking->cancel($request->cancellation_reason);
+            if (method_exists($booking, 'cancel')) {
+                $booking->cancel($request->cancellation_reason);
+            } else {
+                $booking->status = 'cancelled';
+                $booking->cancellation_reason = $request->cancellation_reason;
+                $booking->save();
 
-            // Log activity
-            activity()
-                ->causedBy(auth()->user())
-                ->performedOn($booking)
-                ->withProperties([
-                    'booking_number' => $booking->booking_number,
-                    'reason' => $request->cancellation_reason
-                ])
-                ->log('Admin cancelled booking: ' . $booking->booking_number);
+                if ($booking->schedule) {
+                    $booking->schedule->booked_slots = max(0, (int) $booking->schedule->booked_slots - (int) $booking->number_of_slots);
+                    if ($booking->schedule->booked_slots < $booking->schedule->total_capacity) {
+                        $booking->schedule->status = 'available';
+                    }
+                    $booking->schedule->save();
+                }
+            }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Booking cancelled successfully!'
+                'message' => 'Booking cancelled successfully!',
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to cancel booking: ' . $e->getMessage()
+                'message' => 'Failed to cancel booking: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -352,21 +377,17 @@ class BookingManagementController extends Controller
         try {
             DB::beginTransaction();
 
-            $bookingNumber = $booking->booking_number;
-
-            // If booking is not cancelled, free up the slots
-            if ($booking->status !== 'cancelled') {
-                $booking->schedule->decrementBookedSlots($booking->number_of_slots);
+            if ($booking->status !== 'cancelled' && $booking->schedule) {
+                if (method_exists($booking->schedule, 'decrementBookedSlots')) {
+                    $booking->schedule->decrementBookedSlots($booking->number_of_slots);
+                } else {
+                    $booking->schedule->booked_slots = max(0, (int) $booking->schedule->booked_slots - (int) $booking->number_of_slots);
+                    if ($booking->schedule->booked_slots < $booking->schedule->total_capacity) {
+                        $booking->schedule->status = 'available';
+                    }
+                    $booking->schedule->save();
+                }
             }
-
-            // Log activity before deletion
-            activity()
-                ->causedBy(auth()->user())
-                ->withProperties([
-                    'booking_number' => $bookingNumber,
-                    'user_id' => $booking->user_id
-                ])
-                ->log('Admin deleted booking: ' . $bookingNumber);
 
             $booking->delete();
 
@@ -374,34 +395,15 @@ class BookingManagementController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Booking deleted successfully!'
+                'message' => 'Booking deleted successfully!',
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete booking: ' . $e->getMessage()
+                'message' => 'Failed to delete booking: ' . $e->getMessage(),
             ], 500);
         }
-    }
-
-    public function getUsers(Request $request)
-    {
-        $search = $request->get('search', '');
-        
-        $users = User::where('role', 'user')
-            ->where('status', 'active')
-            ->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
-            })
-            ->limit(10)
-            ->get(['id', 'name', 'email']);
-
-        return response()->json([
-            'success' => true,
-            'users' => $users
-        ]);
     }
 }

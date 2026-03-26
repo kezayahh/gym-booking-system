@@ -4,44 +4,62 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\AdminAuthController;
 
-Route::prefix('user')->group(function () {
-    Route::middleware('guest')->group(function () {
-        Route::view('/login', 'app')->name('login');
-        Route::view('/register', 'app')->name('register');
+$spaView = function () {
+    return view('app');
+};
 
-        Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
-        Route::post('/register', [AuthController::class, 'register'])->name('register.submit');
-    });
+// ============================================
+// USER ROUTES
+// ============================================
+Route::prefix('user')->group(function () use ($spaView) {
+    // Auth pages
+    Route::get('/login', $spaView)->name('user.login');
+    Route::get('/register', $spaView)->name('user.register');
 
-    Route::middleware(['auth', 'role:user'])->group(function () {
-        Route::view('/dashboard', 'app')->name('user.dashboard');
-        Route::view('/schedule', 'app')->name('user.schedule');
-        Route::view('/bookings', 'app')->name('user.bookings');
-        Route::view('/payments', 'app')->name('user.payments');
-        Route::view('/notifications', 'app')->name('user.notifications');
-        Route::view('/profile', 'app')->name('user.profile');
-    });
+    // Auth actions
+    Route::post('/login', [AuthController::class, 'login'])->name('user.login.submit');
+    Route::post('/register', [AuthController::class, 'register'])->name('user.register.submit');
+    Route::post('/logout', [AuthController::class, 'logout'])->name('user.logout');
+
+    // SPA pages
+    Route::get('/dashboard', $spaView)->name('user.dashboard');
+    Route::get('/schedule', $spaView)->name('user.schedule');
+    Route::get('/bookings', $spaView)->name('user.bookings');
+    Route::get('/payments', $spaView)->name('user.payments');
+    Route::get('/notifications', $spaView)->name('user.notifications');
+    Route::get('/profile', $spaView)->name('user.profile');
 });
 
-Route::prefix('admin')->group(function () {
-    Route::middleware('guest')->group(function () {
-        Route::view('/login', 'app')->name('admin.login');
+// ============================================
+// ADMIN ROUTES
+// ============================================
+Route::prefix('admin')->group(function () use ($spaView) {
+    // Auth page
+    Route::get('/login', $spaView)->name('admin.login');
 
-        Route::post('/login', [AdminAuthController::class, 'login'])->name('admin.login.submit');
-    });
+    // Auth actions
+    Route::post('/login', [AdminAuthController::class, 'login'])->name('admin.login.submit');
+    Route::post('/logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
 
-    Route::middleware(['auth', 'role:admin'])->group(function () {
-        Route::view('/dashboard', 'app')->name('admin.dashboard');
-        Route::view('/users', 'app')->name('admin.users');
-        Route::view('/schedules', 'app')->name('admin.schedules');
-        Route::view('/bookings', 'app')->name('admin.bookings');
-        Route::view('/payments', 'app')->name('admin.payments');
-        Route::view('/refunds', 'app')->name('admin.refunds');
-        Route::view('/reports', 'app')->name('admin.reports');
-        Route::view('/profile', 'app')->name('admin.profile');
-    });
+    // SPA pages
+    Route::get('/dashboard', $spaView)->name('admin.dashboard');
+    Route::get('/users', $spaView)->name('admin.users');
+    Route::get('/schedules', $spaView)->name('admin.schedules');
+    Route::get('/bookings', $spaView)->name('admin.bookings');
+    Route::get('/payments', $spaView)->name('admin.payments');
+    Route::get('/refunds', $spaView)->name('admin.refunds');
+    Route::get('/reports', $spaView)->name('admin.reports');
+    Route::get('/profile', $spaView)->name('admin.profile');
 });
 
-Route::post('/logout', [AuthController::class, 'logout'])
-    ->middleware('auth')
-    ->name('logout');
+// ============================================
+// ROOT
+// ============================================
+Route::get('/', function () {
+    return redirect('/user/login');
+});
+
+// ============================================
+// OPTIONAL SPA FALLBACK
+// ============================================
+Route::get('/{any}', $spaView)->where('any', '^(?!api|storage|sanctum).*$');

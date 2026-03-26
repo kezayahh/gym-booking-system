@@ -25,13 +25,17 @@ class Payment extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'paid_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
-    // Boot method
+    // =========================
+    // AUTO GENERATE PAYMENT NUMBER
+    // =========================
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($payment) {
             if (empty($payment->payment_number)) {
                 $payment->payment_number = 'PAY-' . strtoupper(Str::random(8));
@@ -39,7 +43,9 @@ class Payment extends Model
         });
     }
 
-    // Relationships
+    // =========================
+    // RELATIONSHIPS
+    // =========================
     public function booking()
     {
         return $this->belongsTo(Booking::class);
@@ -55,7 +61,9 @@ class Payment extends Model
         return $this->hasOne(Refund::class);
     }
 
-    // Scopes
+    // =========================
+    // SCOPES
+    // =========================
     public function scopeCompleted($query)
     {
         return $query->where('status', 'completed');
@@ -76,23 +84,52 @@ class Payment extends Model
         return $query->whereIn('status', ['refunded', 'partially_refunded']);
     }
 
-    // Methods
+    // =========================
+    // BUSINESS METHODS
+    // =========================
+
     public function markAsCompleted($transactionId = null)
     {
-        return $this->update([
-            'status' => 'completed',
-            'transaction_id' => $transactionId,
-            'paid_at' => now(),
-        ]);
+        $this->status = 'completed';
+        $this->transaction_id = $transactionId;
+        $this->paid_at = now();
+        return $this->save();
     }
 
     public function markAsFailed()
     {
-        return $this->update(['status' => 'failed']);
+        $this->status = 'failed';
+        return $this->save();
     }
 
     public function markAsRefunded()
     {
-        return $this->update(['status' => 'refunded']);
+        $this->status = 'refunded';
+        return $this->save();
+    }
+
+    // =========================
+    // ACCESSORS (VERY IMPORTANT FOR VUE)
+    // =========================
+
+    public function getCreatedAtFormattedAttribute()
+    {
+        return $this->created_at
+            ? $this->created_at->format('M d, Y h:i A')
+            : null;
+    }
+
+    public function getCreatedAtDateAttribute()
+    {
+        return $this->created_at
+            ? $this->created_at->format('Y-m-d')
+            : null;
+    }
+
+    public function getCreatedAtRawAttribute()
+    {
+        return $this->created_at
+            ? $this->created_at->format('Y-m-d')
+            : null;
     }
 }

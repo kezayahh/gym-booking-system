@@ -38,7 +38,9 @@ class DashboardController extends Controller
                     'id' => $booking->id,
                     'booking_number' => $booking->booking_number,
                     'user_name' => $booking->user->name ?? 'N/A',
-                    'schedule_date' => optional($booking->schedule?->date)->format('M d, Y'),
+                    'schedule_date' => $booking->schedule && $booking->schedule->date
+                        ? Carbon::parse($booking->schedule->date)->format('M d, Y')
+                        : '',
                     'status' => $booking->status,
                 ];
             })
@@ -91,7 +93,7 @@ class DashboardController extends Controller
             ->map(function ($schedule) {
                 return [
                     'id' => $schedule->id,
-                    'date' => $schedule->date ? $schedule->date->format('M d, Y') : '',
+                    'date' => $schedule->date ? Carbon::parse($schedule->date)->format('M d, Y') : '',
                     'time_slot' => $schedule->time_slot,
                     'available_slots' => $schedule->available_slots,
                     'total_capacity' => $schedule->total_capacity,
