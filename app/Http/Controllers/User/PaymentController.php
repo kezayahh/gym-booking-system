@@ -109,7 +109,7 @@ class PaymentController extends Controller
         $validator = Validator::make($request->all(), [
             'payment_method' => 'required|in:cash,gcash,paymaya,credit_card,debit_card,bank_transfer',
             'reference_number' => 'required_if:payment_method,gcash,paymaya,bank_transfer|nullable|string',
-            'receipt' => 'nullable|image|max:2048',
+            'receipt' => 'nullable|image|max:5120', // allow up to 5MB receipt uploads
         ]);
 
         if ($validator->fails()) {
