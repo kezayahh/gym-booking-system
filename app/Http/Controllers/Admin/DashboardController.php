@@ -25,6 +25,7 @@ class DashboardController extends Controller
         $pendingRefunds = Refund::where('status', 'pending')->count();
 
         $todayBookings = Booking::whereDate('created_at', Carbon::today())->count();
+
         $todayRevenue = Payment::where('status', 'completed')
             ->whereDate('created_at', Carbon::today())
             ->sum('amount');
@@ -47,7 +48,7 @@ class DashboardController extends Controller
             ->values();
 
         $monthlyRevenue = Payment::where('status', 'completed')
-            ->where('created_at', '>=', Carbon::now()->subMonths(6))
+            ->where('created_at', '>=', Carbon::now()->subMonths(6)->startOfMonth())
             ->select(
                 DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
                 DB::raw('SUM(amount) as total')
@@ -77,14 +78,14 @@ class DashboardController extends Controller
                 return [
                     'id' => $activity->id,
                     'user_name' => $activity->user->name ?? 'System',
-                    'action' => $activity->action,
-                    'description' => $activity->description,
+                    'action' => $activity->action ?? 'info',
+                    'description' => $activity->description ?? '',
                     'time' => $activity->created_at ? $activity->created_at->diffForHumans() : '',
                 ];
             })
             ->values();
 
-        $upcomingSchedules = Schedule::where('date', '>=', Carbon::today())
+        $upcomingSchedules = Schedule::whereDate('date', '>=', Carbon::today())
             ->where('status', 'available')
             ->orderBy('date')
             ->orderBy('start_time')
@@ -94,10 +95,15 @@ class DashboardController extends Controller
                 return [
                     'id' => $schedule->id,
                     'date' => $schedule->date ? Carbon::parse($schedule->date)->format('M d, Y') : '',
-                    'time_slot' => $schedule->time_slot,
-                    'available_slots' => $schedule->available_slots,
-                    'total_capacity' => $schedule->total_capacity,
-                    'price_per_slot' => $schedule->price_per_slot,
+                    'time_slot' => $schedule->time_slot
+                        ?? (
+                            ($schedule->start_time && $schedule->end_time)
+                                ? Carbon::parse($schedule->start_time)->format('h:i A') . ' - ' . Carbon::parse($schedule->end_time)->format('h:i A')
+                                : ''
+                        ),
+                    'available_slots' => (int) ($schedule->available_slots ?? 0),
+                    'total_capacity' => (int) ($schedule->total_capacity ?? 0),
+                    'price_per_slot' => (float) ($schedule->price_per_slot ?? 0),
                 ];
             })
             ->values();
@@ -108,20 +114,20 @@ class DashboardController extends Controller
                 'email' => $user?->email ?? '',
             ],
             'overview' => [
-                'totalUsers' => $totalUsers,
-                'totalBookings' => $totalBookings,
-                'totalRevenue' => $totalRevenue,
-                'pendingRefunds' => $pendingRefunds,
-                'todayBookings' => $todayBookings,
-                'todayRevenue' => $todayRevenue,
+                'totalUsers' => (int) $totalUsers,
+                'totalBookings' => (int) $totalBookings,
+                'totalRevenue' => (float) $totalRevenue,
+                'pendingRefunds' => (int) $pendingRefunds,
+                'todayBookings' => (int) $todayBookings,
+                'todayRevenue' => (float) $todayRevenue,
             ],
             'monthlyRevenue' => $monthlyRevenue,
             'bookingStats' => [
-                'pending' => $bookingStatsRaw['pending'] ?? 0,
-                'confirmed' => $bookingStatsRaw['confirmed'] ?? 0,
-                'completed' => $bookingStatsRaw['completed'] ?? 0,
-                'cancelled' => $bookingStatsRaw['cancelled'] ?? 0,
-                'no_show' => $bookingStatsRaw['no_show'] ?? 0,
+                'pending' => (int) ($bookingStatsRaw['pending'] ?? 0),
+                'confirmed' => (int) ($bookingStatsRaw['confirmed'] ?? 0),
+                'completed' => (int) ($bookingStatsRaw['completed'] ?? 0),
+                'cancelled' => (int) ($bookingStatsRaw['cancelled'] ?? 0),
+                'no_show' => (int) ($bookingStatsRaw['no_show'] ?? 0),
             ],
             'recentBookings' => $recentBookings,
             'recentActivities' => $recentActivities,

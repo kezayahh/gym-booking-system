@@ -46,9 +46,17 @@ class DashboardController extends Controller
                     'status' => $booking->status,
                     'number_of_slots' => $booking->number_of_slots,
                     'total_amount' => $booking->total_amount,
-                    'is_paid' => $booking->isPaid,
+                    'amount' => $booking->total_amount,
+                    'isPaid' => $booking->isPaid ?? false,
+                    'is_paid' => $booking->isPaid ?? false,
+                    'payment_status' => $booking->payment_status ?? null,
+                    'schedule_date' => optional($booking->schedule?->date)->format('Y-m-d'),
+                    'date' => optional($booking->schedule?->date)->format('Y-m-d'),
+                    'schedule_time' => $booking->schedule->timeSlot ?? '',
+                    'time_slot' => $booking->schedule->timeSlot ?? '',
+                    'time' => $booking->schedule->timeSlot ?? '',
                     'schedule' => [
-                        'formatted_date' => optional($booking->schedule->date)->format('l, F d, Y'),
+                        'formatted_date' => optional($booking->schedule?->date)->format('l, F d, Y'),
                         'time_slot' => $booking->schedule->timeSlot ?? '',
                     ],
                 ];
@@ -66,7 +74,8 @@ class DashboardController extends Controller
                     'amount' => $payment->amount,
                     'status' => $payment->status,
                     'status_label' => ucfirst($payment->status),
-                    'created_at' => $payment->created_at?->format('M d, Y'),
+                    'created_at' => $payment->created_at?->toISOString(),
+                    'date' => $payment->created_at?->toISOString(),
                 ];
             })
             ->values();
@@ -83,7 +92,8 @@ class DashboardController extends Controller
                     'short_message' => Str::limit($notification->message, 60),
                     'type' => $notification->type,
                     'is_read' => $notification->is_read,
-                    'created_at' => $notification->created_at?->diffForHumans(),
+                    'created_at' => $notification->created_at?->toISOString(),
+                    'time_ago' => $notification->created_at?->diffForHumans(),
                 ];
             })
             ->values();
@@ -93,7 +103,9 @@ class DashboardController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'memberSince' => $user->created_at?->format('M Y'),
-                'initials' => strtoupper(Str::substr($user->name, 0, 2)),
+                'initials' => strtoupper(Str::of($user->name)->trim()->explode(' ')->map(function ($part) {
+                    return Str::substr($part, 0, 1);
+                })->take(2)->implode('')),
             ],
             'stats' => [
                 'totalBookings' => $totalBookings,

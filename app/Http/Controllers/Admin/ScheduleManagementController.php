@@ -46,8 +46,9 @@ class ScheduleManagementController extends Controller
                     'start_time' => $schedule->start_time ? substr($schedule->start_time, 0, 5) : '',
                     'end_time' => $schedule->end_time ? substr($schedule->end_time, 0, 5) : '',
                     'time_slot' => date('h:i A', strtotime($schedule->start_time)) . ' - ' . date('h:i A', strtotime($schedule->end_time)),
-                    'total_capacity' => $schedule->total_capacity,
-                    'booked_slots' => $schedule->booked_slots,
+                    'total_capacity' => (int) $schedule->total_capacity,
+                    'booked_slots' => (int) $schedule->booked_slots,
+                    'available_slots' => max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots),
                     'price_per_slot' => (float) $schedule->price_per_slot,
                     'status' => $schedule->status,
                     'notes' => $schedule->notes,
@@ -129,8 +130,9 @@ class ScheduleManagementController extends Controller
                 'start_time' => $schedule->start_time ? substr($schedule->start_time, 0, 5) : '',
                 'end_time' => $schedule->end_time ? substr($schedule->end_time, 0, 5) : '',
                 'time_slot' => date('h:i A', strtotime($schedule->start_time)) . ' - ' . date('h:i A', strtotime($schedule->end_time)),
-                'total_capacity' => $schedule->total_capacity,
-                'booked_slots' => $schedule->booked_slots,
+                'total_capacity' => (int) $schedule->total_capacity,
+                'booked_slots' => (int) $schedule->booked_slots,
+                'available_slots' => max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots),
                 'price_per_slot' => (float) $schedule->price_per_slot,
                 'status' => $schedule->status,
                 'notes' => $schedule->notes,
@@ -221,7 +223,7 @@ class ScheduleManagementController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'time_slots' => 'required|array|min:1',
             'time_slots.*.start_time' => 'required|date_format:H:i',
-            'time_slots.*.end_time' => 'required|date_format:H:i|after:time_slots.*.start_time',
+            'time_slots.*.end_time' => 'required|date_format:H:i',
             'time_slots.*.capacity' => 'required|integer|min:1',
             'time_slots.*.price' => 'required|numeric|min:0',
             'days_of_week' => 'required|array|min:1',
@@ -239,6 +241,10 @@ class ScheduleManagementController extends Controller
             for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
                 if (in_array($date->dayOfWeek, $daysOfWeek)) {
                     foreach ($validated['time_slots'] as $slot) {
+                        if ($slot['end_time'] <= $slot['start_time']) {
+                            continue;
+                        }
+
                         $overlapping = Schedule::whereDate('date', $date->format('Y-m-d'))
                             ->where(function ($query) use ($slot) {
                                 $query->whereBetween('start_time', [$slot['start_time'], $slot['end_time']])
@@ -261,6 +267,7 @@ class ScheduleManagementController extends Controller
                                 'status' => 'available',
                                 'notes' => null,
                             ]);
+
                             $createdCount++;
                         }
                     }

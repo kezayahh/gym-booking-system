@@ -146,6 +146,9 @@ class BookingManagementController extends Controller
                     'price_per_slot' => (float) $schedule->price_per_slot,
                 ];
             })
+            ->filter(function ($schedule) {
+                return $schedule['availableSlots'] > 0;
+            })
             ->values();
 
         return response()->json([
@@ -174,8 +177,33 @@ class BookingManagementController extends Controller
 
             $schedule = Schedule::findOrFail($request->schedule_id);
 
+            if ($schedule->status !== 'available') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This schedule is not available for booking.',
+                ], 422);
+            }
+
+            $existingBooking = Booking::where('user_id', $request->user_id)
+                ->where('schedule_id', $request->schedule_id)
+                ->whereIn('status', ['pending', 'confirmed', 'paid'])
+                ->exists();
+
+            if ($existingBooking) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This user already has a booking for the selected schedule.',
+                ], 422);
+            }
+
             if (method_exists($schedule, 'canBook')) {
                 if (!$schedule->canBook($request->number_of_slots)) {
+                    DB::rollBack();
+
                     return response()->json([
                         'success' => false,
                         'message' => 'Schedule cannot accommodate the requested number of slots.',
@@ -183,7 +211,10 @@ class BookingManagementController extends Controller
                 }
             } else {
                 $availableSlots = max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots);
+
                 if ((int) $request->number_of_slots > $availableSlots) {
+                    DB::rollBack();
+
                     return response()->json([
                         'success' => false,
                         'message' => 'Schedule cannot accommodate the requested number of slots.',
@@ -205,9 +236,13 @@ class BookingManagementController extends Controller
                 $schedule->incrementBookedSlots($request->number_of_slots);
             } else {
                 $schedule->booked_slots = (int) $schedule->booked_slots + (int) $request->number_of_slots;
+
                 if ($schedule->booked_slots >= $schedule->total_capacity) {
                     $schedule->status = 'full';
+                } else {
+                    $schedule->status = 'available';
                 }
+
                 $schedule->save();
             }
 
@@ -347,9 +382,11 @@ class BookingManagementController extends Controller
 
                 if ($booking->schedule) {
                     $booking->schedule->booked_slots = max(0, (int) $booking->schedule->booked_slots - (int) $booking->number_of_slots);
+
                     if ($booking->schedule->booked_slots < $booking->schedule->total_capacity) {
                         $booking->schedule->status = 'available';
                     }
+
                     $booking->schedule->save();
                 }
             }
@@ -382,9 +419,11 @@ class BookingManagementController extends Controller
                     $booking->schedule->decrementBookedSlots($booking->number_of_slots);
                 } else {
                     $booking->schedule->booked_slots = max(0, (int) $booking->schedule->booked_slots - (int) $booking->number_of_slots);
+
                     if ($booking->schedule->booked_slots < $booking->schedule->total_capacity) {
                         $booking->schedule->status = 'available';
                     }
+
                     $booking->schedule->save();
                 }
             }

@@ -23,27 +23,25 @@ class Schedule extends Model
 
     protected $casts = [
         'date' => 'date',
-        'start_time' => 'datetime:H:i',
-        'end_time' => 'datetime:H:i',
         'price_per_slot' => 'decimal:2',
+        'total_capacity' => 'integer',
+        'booked_slots' => 'integer',
     ];
 
-    // Relationships
     public function bookings()
     {
         return $this->hasMany(Booking::class);
     }
 
-    // Scopes
     public function scopeAvailable($query)
     {
         return $query->where('status', 'available')
-                    ->where('booked_slots', '<', $this->total_capacity);
+            ->whereColumn('booked_slots', '<', 'total_capacity');
     }
 
     public function scopeUpcoming($query)
     {
-        return $query->where('date', '>=', Carbon::today());
+        return $query->whereDate('date', '>=', Carbon::today());
     }
 
     public function scopeToday($query)
@@ -53,60 +51,82 @@ class Schedule extends Model
 
     public function scopePast($query)
     {
-        return $query->where('date', '<', Carbon::today());
+        return $query->whereDate('date', '<', Carbon::today());
     }
-public function getDurationHoursAttribute()
-    {
-        $start = Carbon::parse($this->start_time);
-        $end   = Carbon::parse($this->end_time);
 
-        return $start->diffInMinutes($end) / 60; // 7–9 = 2 hours
+    public function getDurationHoursAttribute()
+    {
+        if (!$this->start_time || !$this->end_time) {
+            return 0;
+        }
+
+        $start = Carbon::parse($this->start_time);
+        $end = Carbon::parse($this->end_time);
+
+        return $start->diffInMinutes($end) / 60;
     }
 
     public function getTotalPriceAttribute()
     {
-        return $this->duration_hours * $this->price_per_slot; // price_per_hour
+        return (float) $this->duration_hours * (float) $this->price_per_slot;
     }
-    // Accessors
+
     public function getAvailableSlotsAttribute()
     {
-        return $this->total_capacity - $this->booked_slots;
+        return max(0, (int) $this->total_capacity - (int) $this->booked_slots);
     }
 
     public function getIsFullAttribute()
     {
-        return $this->booked_slots >= $this->total_capacity;
+        return (int) $this->booked_slots >= (int) $this->total_capacity;
     }
 
     public function getTimeSlotAttribute()
     {
-        return Carbon::parse($this->start_time)->format('h:i A') . ' - ' . 
+        if (!$this->start_time || !$this->end_time) {
+            return '';
+        }
+
+        return Carbon::parse($this->start_time)->format('h:i A') . ' - ' .
                Carbon::parse($this->end_time)->format('h:i A');
     }
 
-    // Methods
     public function canBook($numberOfSlots = 1)
     {
-        return $this->status === 'available' && 
-               ($this->booked_slots + $numberOfSlots) <= $this->total_capacity &&
-               $this->date >= Carbon::today();
+        return $this->status === 'available'
+            && ((int) $this->booked_slots + (int) $numberOfSlots) <= (int) $this->total_capacity
+            && Carbon::parse($this->date)->gte(Carbon::today());
     }
 
     public function incrementBookedSlots($numberOfSlots = 1)
     {
-        $this->increment('booked_slots', $numberOfSlots);
-        
+        $this->booked_slots = (int) $this->booked_slots + (int) $numberOfSlots;
+
         if ($this->booked_slots >= $this->total_capacity) {
-            $this->update(['status' => 'full']);
+            $this->status = 'full';
+        } else {
+            $this->status = 'available';
         }
+
+        $this->save();
+
+        return $this;
     }
 
     public function decrementBookedSlots($numberOfSlots = 1)
     {
-        $this->decrement('booked_slots', $numberOfSlots);
-        
-        if ($this->status === 'full' && $this->booked_slots < $this->total_capacity) {
-            $this->update(['status' => 'available']);
+        $this->booked_slots = max(0, (int) $this->booked_slots - (int) $numberOfSlots);
+
+        if ($this->booked_slots < $this->total_capacity && $this->status === 'full') {
+            $this->status = 'available';
         }
+
+        if ($this->booked_slots < $this->total_capacity && $this->status !== 'closed') {
+            $this->status = 'available';
+        }
+
+        $this->save();
+
+        return $this;
     }
 }

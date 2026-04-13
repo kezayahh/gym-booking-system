@@ -44,30 +44,30 @@ const isActive = (path) => route.path === path
 
 <template>
   <aside
-    class="fixed inset-y-0 left-0 z-50 w-64 flex-shrink-0 overflow-y-auto transform transition-all duration-300 md:relative md:translate-x-0"
+    class="fixed inset-y-0 left-0 z-50 w-64 min-w-[16rem] max-w-[16rem] basis-[16rem] shrink-0 overflow-y-auto transition-all duration-300 md:static md:translate-x-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
     style="background-color: var(--primary-dark);"
   >
     <div class="p-6">
-      <div class="flex justify-center mb-8">
+      <div class="mb-8 flex justify-center">
         <div class="flex flex-col items-center text-center">
-          <img :src="logoUrl" alt="Gym" class="h-32 w-32 mx-auto object-contain">
-          <h1 class="text-xl font-bold text-white mt-3">City Gymnasium</h1>
+          <img :src="logoUrl" alt="Gym" class="mx-auto h-24 w-24 object-contain" />
+          <h1 class="mt-3 text-xl font-bold text-white">City Gymnasium</h1>
           <p class="text-xs text-blue-200">Member Portal</p>
         </div>
       </div>
 
-      <div class="bg-white/10 rounded-lg p-4 mb-6">
+      <div class="mb-6 rounded-lg bg-white/10 p-4">
         <div class="flex items-center space-x-3">
-          <div class="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-lg font-semibold">
+          <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-400 to-purple-500 text-lg font-semibold text-white">
             {{ userInitial }}
           </div>
 
           <div class="flex-1 min-w-0">
-            <p class="text-white font-semibold text-sm truncate">
+            <p class="truncate text-sm font-semibold text-white">
               {{ props.user?.name || 'User' }}
             </p>
-            <p class="text-blue-200 text-xs">
+            <p class="text-xs text-blue-200">
               {{ props.user?.role || 'Member' }}
             </p>
           </div>
@@ -79,7 +79,7 @@ const isActive = (path) => route.path === path
           v-for="item in menuItems"
           :key="item.path"
           :to="item.path"
-          class="flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200"
+          class="flex items-center space-x-3 rounded-lg px-4 py-3 transition-colors duration-200"
           :class="isActive(item.path) ? 'bg-white/20 text-white' : 'text-blue-100 hover:bg-white/10 hover:text-white'"
           @click="emit('close')"
         >
@@ -88,17 +88,17 @@ const isActive = (path) => route.path === path
 
           <span
             v-if="item.name === 'Notifications' && props.unreadNotifications > 0"
-            class="ml-auto bg-red-500 text-white text-xs rounded-full px-2 py-1"
+            class="ml-auto rounded-full bg-red-500 px-2 py-1 text-xs text-white"
           >
             {{ props.unreadNotifications }}
           </span>
         </router-link>
 
-        <div class="border-t border-white/20 my-4"></div>
+        <div class="my-4 border-t border-white/20"></div>
 
         <button
           type="button"
-          class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+          class="flex w-full items-center space-x-3 rounded-lg px-4 py-3 text-red-300 transition-colors duration-200 hover:bg-red-500/20 hover:text-red-200"
           @click="emit('request-logout')"
         >
           <i class="fas fa-sign-out-alt w-5"></i>

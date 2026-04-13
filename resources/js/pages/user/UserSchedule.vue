@@ -43,6 +43,24 @@ const currency = (value) => {
   })}`
 }
 
+const getScheduleBasePrice = (schedule) => {
+  if (!schedule) return 0
+  return Number(schedule.price_per_slot || schedule.price || 0)
+}
+
+const getScheduleTotalAmount = (schedule) => {
+  if (!schedule) return 0
+
+  const duration = Number(schedule.duration_hours || 0)
+  const pricePerSlot = Number(schedule.price_per_slot || schedule.price || 0)
+
+  if (duration > 0 && pricePerSlot > 0) {
+    return duration * pricePerSlot
+  }
+
+  return pricePerSlot
+}
+
 const monthYear = computed(() => {
   return new Date(filters.year, filters.month - 1, 1).toLocaleDateString('en-US', {
     month: 'long',
@@ -138,10 +156,12 @@ const calendarDays = computed(() => {
 
     if (isPastDate(date)) {
       status = 'past'
-    } else if (bookedSchedules.length > 0) {
-      status = 'booked'
+    } else if (fullSchedules.length > 0 && availableSchedules.length === 0) {
+      status = 'full'
     } else if (availableSchedules.length > 0) {
       status = 'available'
+    } else if (bookedSchedules.length > 0) {
+      status = 'booked'
     } else if (fullSchedules.length > 0) {
       status = 'full'
     }
@@ -173,27 +193,21 @@ const getCalendarDayClass = (day) => {
   const base =
     'min-h-[92px] rounded-xl border p-3 transition-all duration-200 relative text-left shadow-sm'
 
+  let colorClass = 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-md cursor-pointer'
+
   if (day.isPast) {
-    return `${base} bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed`
+    colorClass = 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed'
+  } else if (day.status === 'full') {
+    colorClass = 'bg-red-200 border-red-500 text-red-800 hover:border-red-600 hover:shadow-md cursor-pointer'
+  } else if (day.status === 'available') {
+    colorClass = 'bg-green-200 border-green-500 text-green-800 hover:border-green-600 hover:shadow-md cursor-pointer'
+  } else if (day.status === 'booked') {
+    colorClass = 'bg-red-200 border-red-500 text-red-800 hover:border-red-600 hover:shadow-md cursor-pointer'
   }
 
-  if (day.isSelected) {
-    return `${base} bg-blue-50 border-blue-500 ring-2 ring-blue-200 cursor-pointer`
-  }
+  const selectedClass = day.isSelected ? ' ring-2 ring-blue-300' : ''
 
-  if (day.status === 'booked') {
-    return `${base} bg-indigo-50 border-indigo-300 hover:border-indigo-500 cursor-pointer`
-  }
-
-  if (day.status === 'available') {
-    return `${base} bg-green-50 border-green-300 hover:border-green-500 hover:shadow-md cursor-pointer`
-  }
-
-  if (day.status === 'full') {
-    return `${base} bg-red-50 border-red-300 hover:border-red-500 cursor-pointer`
-  }
-
-  return `${base} bg-white border-gray-200 hover:border-blue-400 hover:shadow-md cursor-pointer`
+  return `${base} ${colorClass}${selectedClass}`
 }
 
 const loadSchedules = async () => {
@@ -208,8 +222,8 @@ const loadSchedules = async () => {
       },
     })
 
-    schedules.value = data.schedules || []
-    upcomingSchedules.value = data.upcomingSchedules || []
+    schedules.value = Array.isArray(data?.schedules) ? data.schedules : []
+    upcomingSchedules.value = Array.isArray(data?.upcomingSchedules) ? data.upcomingSchedules : []
 
     if (selectedDate.value) {
       await loadSchedulesByDate(selectedDate.value)
@@ -238,7 +252,7 @@ const loadSchedulesByDate = async (date = filters.date) => {
       },
     })
 
-    selectedDateSchedules.value = data || []
+    selectedDateSchedules.value = Array.isArray(data) ? data : []
   } catch (err) {
     console.error(err)
     error.value = 'Failed to load schedules for selected date.'
@@ -284,7 +298,10 @@ const openBookingModal = async (scheduleId) => {
 
   try {
     const { data } = await api.get(`/api/user/schedule/${scheduleId}`)
-    selectedSchedule.value = data
+    selectedSchedule.value = {
+      ...data,
+      total_price: getScheduleTotalAmount(data),
+    }
     bookingForm.schedule_id = data.id
     bookingForm.payment_method = ''
     bookingForm.special_requests = ''
@@ -304,9 +321,17 @@ const closeBookingModal = () => {
   bookingForm.schedule_id = ''
   bookingForm.payment_method = ''
   bookingForm.special_requests = ''
+  error.value = ''
+}
+
+const clearModalError = () => {
+  error.value = ''
 }
 
 const submitBooking = async () => {
+  clearModalError()
+  success.value = ''
+
   if (!bookingForm.schedule_id) {
     error.value = 'Please select a schedule.'
     return
@@ -318,25 +343,38 @@ const submitBooking = async () => {
   }
 
   bookingLoading.value = true
-  error.value = ''
 
   try {
-    const { data } = await api.post('/api/user/bookings/store', {
+    const computedTotal = getScheduleTotalAmount(selectedSchedule.value)
+
+    const { data } = await api.post('/api/user/bookings', {
       schedule_id: bookingForm.schedule_id,
       number_of_slots: 1,
       payment_method: bookingForm.payment_method,
       special_requests: bookingForm.special_requests || null,
     })
 
-    if (data?.success) {
+    const bookingData = data?.booking || data?.data || data
+    const bookingCreated =
+      Boolean(data?.success) ||
+      Boolean(bookingData?.id) ||
+      Boolean(bookingData?.booking_number)
+
+    if (bookingCreated) {
       currentBookingData.value = {
-        ...data.booking,
-        payment_method: bookingForm.payment_method,
-        schedule: selectedSchedule.value,
+        ...bookingData,
+        payment_method: bookingData?.payment_method || bookingForm.payment_method,
+        total_amount: bookingData?.total_amount ?? computedTotal,
+        booking_number: bookingData?.booking_number || bookingData?.reference_number || 'N/A',
+        schedule: {
+          ...selectedSchedule.value,
+          ...(bookingData?.schedule || {}),
+          total_price: computedTotal,
+        },
       }
 
       bookingStep.value = 'payment'
-      success.value = data.message || 'Booking created successfully.'
+      success.value = data?.message || 'Booking created successfully.'
 
       await loadSchedules()
       if (selectedDate.value) {
@@ -350,6 +388,7 @@ const submitBooking = async () => {
     error.value =
       err?.response?.data?.message ||
       err?.response?.data?.errors?.schedule_id?.[0] ||
+      err?.response?.data?.errors?.payment_method?.[0] ||
       'Failed to create booking.'
   } finally {
     bookingLoading.value = false
@@ -545,7 +584,7 @@ onMounted(() => {
     </div>
 
     <div
-      v-if="error"
+      v-if="error && !bookingModalOpen"
       class="mb-4 rounded-lg border border-red-300 bg-red-100 px-4 py-3 text-red-700"
     >
       {{ error }}
@@ -553,9 +592,9 @@ onMounted(() => {
 
     <div class="mb-6">
       <h1 class="text-3xl font-bold text-gray-800">
-        <i class="fas fa-calendar-alt text-blue-500 mr-2"></i>Schedule &amp; Availability
+        <i class="fas fa-calendar-alt mr-2 text-blue-500"></i>Schedule &amp; Availability
       </h1>
-      <p class="text-gray-600 mt-1">View available time slots and book your gym session</p>
+      <p class="mt-1 text-gray-600">View available time slots and book your gym session</p>
     </div>
 
     <div v-if="loading" class="rounded-lg bg-white p-10 text-center text-gray-500 shadow-lg">
@@ -563,7 +602,7 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div class="lg:col-span-2">
           <div class="rounded-lg bg-white p-6 shadow-lg">
             <div class="mb-6 flex items-center justify-between">
@@ -724,7 +763,7 @@ onMounted(() => {
                     </p>
                     <p>
                       <i class="fas fa-peso-sign mr-2 text-green-500"></i>
-                      {{ currency(slot.total_price || slot.price || slot.price_per_slot) }}
+                      {{ currency(getScheduleBasePrice(slot)) }}
                     </p>
                     <p v-if="slot.notes">
                       <i class="fas fa-sticky-note mr-2 text-yellow-500"></i>
@@ -794,7 +833,7 @@ onMounted(() => {
 
               <div class="flex items-center justify-between">
                 <span class="font-bold text-blue-600">
-                  ₱{{ Number(schedule.price_per_slot || schedule.total_price || 0).toFixed(0) }}/hour
+                  {{ currency(getScheduleBasePrice(schedule)) }}
                 </span>
 
                 <button class="rounded-lg bg-blue-500 px-4 py-2 text-sm text-white transition hover:bg-blue-600">
@@ -830,11 +869,18 @@ onMounted(() => {
             </button>
           </div>
 
+          <div
+            v-if="error"
+            class="mb-4 rounded-lg border border-red-300 bg-red-100 px-4 py-3 text-red-700"
+          >
+            {{ error }}
+          </div>
+
           <div class="mb-4 rounded-lg bg-blue-50 p-4" v-if="selectedSchedule">
             <div class="space-y-2">
               <div class="flex justify-between">
                 <span class="text-gray-600">Date:</span>
-                <span class="font-semibold">{{ selectedSchedule.date }}</span>
+                <span class="font-semibold">{{ selectedSchedule.display_date || selectedSchedule.formatted_date || selectedSchedule.date }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-600">Time:</span>
@@ -851,7 +897,7 @@ onMounted(() => {
               <div class="flex justify-between border-t border-blue-200 pt-2">
                 <span class="font-medium text-gray-700">Price:</span>
                 <span class="font-bold text-green-600">
-                  {{ currency(selectedSchedule.price_per_slot || selectedSchedule.total_price || 0) }}
+                  {{ currency(getScheduleBasePrice(selectedSchedule)) }}
                 </span>
               </div>
             </div>
@@ -865,6 +911,7 @@ onMounted(() => {
 
               <select
                 v-model="bookingForm.payment_method"
+                @change="clearModalError"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 required
               >
@@ -883,6 +930,7 @@ onMounted(() => {
 
               <textarea
                 v-model="bookingForm.special_requests"
+                @input="clearModalError"
                 rows="3"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 placeholder="Any special requirements or notes..."
@@ -893,7 +941,7 @@ onMounted(() => {
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700">Total Amount:</span>
                 <span class="text-2xl font-bold text-green-600">
-                  {{ currency(selectedSchedule?.price_per_slot || selectedSchedule?.total_price || 0) }}
+                  {{ currency(getScheduleTotalAmount(selectedSchedule)) }}
                 </span>
               </div>
             </div>
@@ -954,7 +1002,7 @@ onMounted(() => {
             <div class="space-y-2 text-sm" v-if="currentBookingData">
               <div class="flex justify-between">
                 <span class="text-gray-600">Date:</span>
-                <span class="font-semibold">{{ currentBookingData.schedule?.date }}</span>
+                <span class="font-semibold">{{ currentBookingData.schedule?.display_date || currentBookingData.schedule?.formatted_date || currentBookingData.schedule?.date }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-600">Time:</span>

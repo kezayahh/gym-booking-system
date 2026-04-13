@@ -17,12 +17,28 @@ class CheckRole
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
         if (!Auth::check()) {
-            return redirect()->route('login');
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthenticated.',
+                ], 401);
+            }
+
+            if (
+                $request->is('admin') ||
+                $request->is('admin/*') ||
+                $request->is('api/admin') ||
+                $request->is('api/admin/*')
+            ) {
+                return redirect()->route('admin.login');
+            }
+
+            return redirect()->route('user.login');
         }
 
         $user = Auth::user();
 
-        if (!in_array($user->role, $roles)) {
+        if (!in_array($user->role, $roles, true)) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,

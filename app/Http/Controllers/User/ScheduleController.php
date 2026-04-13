@@ -90,7 +90,9 @@ class ScheduleController extends Controller
         $startTime = $schedule->start_time;
         $endTime = $schedule->end_time;
 
-        $availableSlots = max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots);
+        $totalCapacity = (int) ($schedule->total_capacity ?? 0);
+        $bookedSlots = (int) ($schedule->booked_slots ?? 0);
+        $availableSlots = max(0, $totalCapacity - $bookedSlots);
 
         $userHasBooking = method_exists($schedule, 'bookings')
             ? $schedule->bookings()
@@ -119,16 +121,21 @@ class ScheduleController extends Controller
         $isAvailableStatus = $schedule->status === 'available';
         $isFull = $availableSlots <= 0 || !$isAvailableStatus;
 
+        $timeSlot = $schedule->time_slot
+            ?? ($schedule->timeSlot ?? null)
+            ?? (($startTime && $endTime) ? Carbon::parse($startTime)->format('h:i A') . ' - ' . Carbon::parse($endTime)->format('h:i A') : '');
+
         $data = [
             'id' => $schedule->id,
             'date' => $date->format('Y-m-d'),
             'raw_date' => $date->format('Y-m-d'),
             'formatted_date' => $date->format('l, F d, Y'),
-            'start_time' => $startTime,
-            'end_time' => $endTime,
-            'time_slot' => $schedule->timeSlot ?? ($startTime . ' - ' . $endTime),
-            'total_capacity' => (int) $schedule->total_capacity,
-            'booked_slots' => (int) $schedule->booked_slots,
+            'display_date' => $date->format('l, F d, Y'),
+            'start_time' => $startTime ? Carbon::parse($startTime)->format('h:i A') : '',
+            'end_time' => $endTime ? Carbon::parse($endTime)->format('h:i A') : '',
+            'time_slot' => $timeSlot,
+            'total_capacity' => $totalCapacity,
+            'booked_slots' => $bookedSlots,
             'available_slots' => $availableSlots,
             'price' => $pricePerSlot,
             'price_per_slot' => $pricePerSlot,

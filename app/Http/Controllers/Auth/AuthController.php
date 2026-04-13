@@ -11,19 +11,16 @@ use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-    // Show User Login Form
     public function showLoginForm()
     {
         return view('app');
     }
 
-    // Show User Register Form
     public function showRegisterForm()
     {
         return view('app');
     }
 
-    // Handle User Login
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -32,53 +29,41 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first(),
-                    'errors' => $validator->errors(),
-                ], 422);
-            }
-
-            return back()->withErrors($validator)->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
         }
 
         $credentials = $request->only('email', 'password');
-        $remember = $request->has('remember');
+        $remember = $request->boolean('remember');
 
         if (Auth::attempt($credentials, $remember)) {
             $user = Auth::user();
 
-            // Check if user role is 'user'
+            // Check role
             if ($user->role !== 'user') {
                 Auth::logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
 
-                if ($request->expectsJson()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid credentials. Please use admin login.',
-                    ], 403);
-                }
-
-                return back()->with('error', 'Invalid credentials. Please use admin login.')->withInput();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials. Please use admin login.',
+                ], 403);
             }
 
-            // Check if account is active
+            // Check status
             if ($user->status !== 'active') {
                 Auth::logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
 
-                if ($request->expectsJson()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Your account has been suspended. Please contact support.',
-                    ], 403);
-                }
-
-                return back()->with('error', 'Your account has been suspended. Please contact support.')->withInput();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account has been suspended. Please contact support.',
+                ], 403);
             }
 
             $request->session()->regenerate();
@@ -89,30 +74,20 @@ class AuthController extends Controller
                     ->log('User logged in');
             }
 
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Welcome back, ' . $user->name . '!',
-                    'redirect' => '/user/dashboard',
-                    'user' => $user,
-                ]);
-            }
-
-            return redirect()->route('user.dashboard')
-                ->with('success', 'Welcome back, ' . $user->name . '!');
-        }
-
-        if ($request->expectsJson()) {
             return response()->json([
-                'success' => false,
-                'message' => 'Invalid email or password.',
-            ], 401);
+                'success' => true,
+                'message' => 'Welcome back, ' . $user->name . '!',
+                'redirect' => '/user/dashboard',
+                'user' => $user,
+            ]);
         }
 
-        return back()->with('error', 'Invalid email or password.')->withInput();
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid email or password.',
+        ], 401);
     }
 
-    // Handle User Registration
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -126,15 +101,11 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first(),
-                    'errors' => $validator->errors(),
-                ], 422);
-            }
-
-            return back()->withErrors($validator)->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
         }
 
         $user = User::create([
@@ -158,20 +129,14 @@ class AuthController extends Controller
                 ->log('New user registered');
         }
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Registration successful! Welcome to City Gymnasium.',
-                'redirect' => '/user/dashboard',
-                'user' => $user,
-            ]);
-        }
-
-        return redirect()->route('user.dashboard')
-            ->with('success', 'Registration successful! Welcome to City Gymnasium.');
+        return response()->json([
+            'success' => true,
+            'message' => 'Registration successful! Welcome to City Gymnasium.',
+            'redirect' => '/user/dashboard',
+            'user' => $user,
+        ]);
     }
 
-    // Handle Logout
     public function logout(Request $request)
     {
         $user = Auth::user();
@@ -186,13 +151,9 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'You have been logged out successfully.',
-            ]);
-        }
-
-        return redirect('/user/login')->with('success', 'You have been logged out successfully.');
+        return response()->json([
+            'success' => true,
+            'message' => 'You have been logged out successfully.',
+        ]);
     }
 }

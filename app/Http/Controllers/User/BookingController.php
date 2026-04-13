@@ -35,8 +35,11 @@ class BookingController extends Controller
                     'date' => optional($schedule->date)->format('M d, Y'),
                     'time_slot' => $schedule->timeSlot ?? $schedule->time_slot ?? ($schedule->start_time . ' - ' . $schedule->end_time),
                     'price_per_slot' => (float) $schedule->price_per_slot,
-                    'available_slots' => max(0, $schedule->total_capacity - $schedule->booked_slots),
+                    'available_slots' => max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots),
                 ];
+            })
+            ->filter(function ($schedule) {
+                return $schedule['available_slots'] > 0;
             })
             ->values();
 
@@ -112,11 +115,11 @@ class BookingController extends Controller
 
         $schedule = Schedule::findOrFail($request->schedule_id);
         $numberOfSlots = (int) $request->number_of_slots;
-        $availableSlots = max(0, $schedule->total_capacity - $schedule->booked_slots);
+        $availableSlots = max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots);
 
         $alreadyBooked = Booking::where('user_id', Auth::id())
             ->where('schedule_id', $schedule->id)
-            ->whereIn('status', ['pending', 'confirmed', 'paid'])
+            ->whereIn('status', ['pending', 'paid', 'confirmed'])
             ->exists();
 
         if ($alreadyBooked) {
@@ -126,11 +129,20 @@ class BookingController extends Controller
             ], 400);
         }
 
-        if (! $schedule->canBook($numberOfSlots)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This schedule is no longer available or does not have enough capacity.',
-            ], 400);
+        if (method_exists($schedule, 'canBook')) {
+            if (! $schedule->canBook($numberOfSlots)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This schedule is no longer available or does not have enough capacity.',
+                ], 400);
+            }
+        } else {
+            if ($schedule->status !== 'available') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This schedule is not available for booking.',
+                ], 400);
+            }
         }
 
         if ($availableSlots < $numberOfSlots) {
@@ -143,16 +155,48 @@ class BookingController extends Controller
         DB::beginTransaction();
 
         try {
+            $durationHours = 1;
+
+            if ($schedule->start_time && $schedule->end_time) {
+                try {
+                    $start = Carbon::parse($schedule->start_time);
+                    $end = Carbon::parse($schedule->end_time);
+                    $minutes = $start->diffInMinutes($end, false);
+
+                    if ($minutes > 0) {
+                        $durationHours = round($minutes / 60, 2);
+                    }
+                } catch (\Throwable $e) {
+                    $durationHours = 1;
+                }
+            }
+
+            $pricePerSlot = (float) $schedule->price_per_slot;
+            $totalAmount = $pricePerSlot * $durationHours * $numberOfSlots;
+
             $booking = Booking::create([
                 'user_id'          => Auth::id(),
                 'schedule_id'      => $schedule->id,
                 'number_of_slots'  => $numberOfSlots,
-                'total_amount'     => $schedule->price_per_slot * $numberOfSlots,
+                'total_amount'     => $totalAmount,
+                'booking_date'     => $schedule->date,
                 'status'           => 'pending',
                 'special_requests' => $request->special_requests,
             ]);
 
-            $schedule->incrementBookedSlots($numberOfSlots);
+            if (method_exists($schedule, 'incrementBookedSlots')) {
+                $schedule->incrementBookedSlots($numberOfSlots);
+            } else {
+                $schedule->booked_slots = (int) $schedule->booked_slots + $numberOfSlots;
+
+                if ((int) $schedule->booked_slots >= (int) $schedule->total_capacity) {
+                    $schedule->status = 'full';
+                } else {
+                    $schedule->status = 'available';
+                }
+
+                $schedule->save();
+            }
 
             $payment = Payment::create([
                 'booking_id'     => $booking->id,
@@ -160,6 +204,17 @@ class BookingController extends Controller
                 'amount'         => $booking->total_amount,
                 'payment_method' => $request->payment_method,
                 'status'         => 'pending',
+            ]);
+
+            Notification::create([
+                'user_id' => Auth::id(),
+                'type' => 'booking_confirmation',
+                'title' => 'Booking Created',
+                'message' => "Your booking {$booking->booking_number} has been created successfully.",
+                'data' => [
+                    'booking_id' => $booking->id,
+                    'payment_id' => $payment->id,
+                ],
             ]);
 
             DB::commit();
@@ -173,6 +228,17 @@ class BookingController extends Controller
                     'total_amount'   => $booking->total_amount,
                     'payment_id'     => $payment->id,
                     'payment_method' => $payment->payment_method,
+                    'status'         => $booking->status,
+                    'schedule' => [
+                        'id' => $schedule->id,
+                        'date' => optional($schedule->date)->format('Y-m-d'),
+                        'formatted_date' => optional($schedule->date)->format('l, F d, Y'),
+                        'display_date' => optional($schedule->date)->format('l, F d, Y'),
+                        'time_slot' => $schedule->timeSlot ?? $schedule->time_slot ?? ($schedule->start_time . ' - ' . $schedule->end_time),
+                        'duration_hours' => $durationHours,
+                        'price_per_slot' => $pricePerSlot,
+                        'available_slots' => max(0, (int) $schedule->total_capacity - (int) $schedule->booked_slots),
+                    ],
                 ],
             ]);
         } catch (\Exception $e) {
@@ -188,17 +254,6 @@ class BookingController extends Controller
 
     public function cancel(Request $request, $id)
     {
-        $booking = Booking::where('id', $id)
-            ->where('user_id', Auth::id())
-            ->firstOrFail();
-
-        if (! $booking->canCancel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This booking cannot be cancelled. Must be cancelled at least 24 hours before the scheduled time.'
-            ], 400);
-        }
-
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string|max:500',
         ]);
@@ -206,21 +261,60 @@ class BookingController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
             ], 422);
+        }
+
+        $booking = Booking::with(['schedule', 'payment'])
+            ->where('id', $id)
+            ->where('user_id', Auth::id())
+            ->firstOrFail();
+
+        if (! $booking->canCancel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This booking cannot be cancelled. Must be cancelled at least 24 hours before the scheduled time.',
+            ], 400);
         }
 
         DB::beginTransaction();
 
         try {
-            $booking->cancel($request->reason);
+            if (method_exists($booking, 'cancel')) {
+                $booking->cancel($request->reason);
+            } else {
+                $booking->status = 'cancelled';
+                if (property_exists($booking, 'cancellation_reason') || isset($booking->cancellation_reason)) {
+                    $booking->cancellation_reason = $request->reason;
+                }
+                $booking->save();
+
+                if ($booking->schedule) {
+                    $schedule = $booking->schedule;
+                    $schedule->booked_slots = max(0, (int) $schedule->booked_slots - (int) $booking->number_of_slots);
+
+                    if ((int) $schedule->booked_slots < (int) $schedule->total_capacity) {
+                        $schedule->status = 'available';
+                    }
+
+                    $schedule->save();
+                }
+
+                if ($booking->payment && $booking->payment->status === 'pending') {
+                    $booking->payment->status = 'failed';
+                    $booking->payment->save();
+                }
+            }
 
             Notification::create([
                 'user_id' => Auth::id(),
                 'type' => 'booking_cancelled',
                 'title' => 'Booking Cancelled',
                 'message' => "Your booking {$booking->booking_number} has been cancelled.",
-                'data' => json_encode(['booking_id' => $booking->id]),
+                'data' => [
+                    'booking_id' => $booking->id,
+                ],
             ]);
 
             if (function_exists('activity')) {
@@ -234,14 +328,15 @@ class BookingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Booking cancelled successfully.'
+                'message' => 'Booking cancelled successfully.',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Cancel booking error: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while cancelling your booking.'
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -256,7 +351,7 @@ class BookingController extends Controller
         if (! $booking) {
             return response()->json([
                 'success' => false,
-                'message' => 'Booking not found.'
+                'message' => 'Booking not found.',
             ], 404);
         }
 

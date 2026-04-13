@@ -29,6 +29,7 @@ const fetchAdmin = async () => {
       router.replace('/admin/login')
     }
   } catch (error) {
+    console.error('Failed to fetch admin:', error)
     router.replace('/admin/login')
   } finally {
     loading.value = false

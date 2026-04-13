@@ -198,6 +198,11 @@ const submitPayment = async () => {
     return
   }
 
+  if (paymentForm.receipt && paymentForm.receipt.size > 5 * 1024 * 1024) {
+    error.value = 'Receipt must be 5MB or smaller.'
+    return
+  }
+
   processing.value = true
   error.value = ''
   success.value = ''
@@ -216,12 +221,7 @@ const submitPayment = async () => {
 
     const { data } = await api.post(
       `/api/user/payments/${selectedPayment.value.id}/process`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
+      formData
     )
 
     if (data?.success) {

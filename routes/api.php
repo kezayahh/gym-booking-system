@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\AdminAuthController;
 
 use App\Http\Controllers\User\DashboardController;
 use App\Http\Controllers\User\ScheduleController;
@@ -17,7 +19,6 @@ use App\Http\Controllers\Admin\PaymentManagementController;
 use App\Http\Controllers\Admin\RefundManagementController;
 use App\Http\Controllers\Admin\ReportsController;
 use App\Http\Controllers\Admin\ProfileController as AdminProfileController;
-use App\Http\Controllers\Auth\AdminAuthController;
 
 // -----------------------------
 // USER API ROUTES
@@ -30,7 +31,7 @@ Route::middleware(['auth', 'role:user'])->group(function () {
     Route::get('/user/schedule/{id}', [ScheduleController::class, 'show']);
 
     Route::get('/user/bookings', [BookingController::class, 'index']);
-    Route::post('/user/bookings/store', [BookingController::class, 'store']);
+    Route::post('/user/bookings', [BookingController::class, 'store']);
     Route::post('/user/bookings/{id}/cancel', [BookingController::class, 'cancel']);
     Route::get('/user/bookings/{booking}/details', [BookingController::class, 'details']);
 
@@ -49,17 +50,15 @@ Route::middleware(['auth', 'role:user'])->group(function () {
     Route::post('/user/profile/update-password', [ProfileController::class, 'updatePassword']);
     Route::post('/user/profile/upload-photo', [ProfileController::class, 'uploadPhoto']);
     Route::post('/user/profile/delete-photo', [ProfileController::class, 'deletePhoto']);
-});
 
-// -----------------------------
-// ADMIN AUTH CHECK
-// -----------------------------
-Route::middleware(['auth', 'role:admin'])->get('/admin/me', [AdminAuthController::class, 'me']);
+    Route::post('/user/logout', [AuthController::class, 'logout']);
+});
 
 // -----------------------------
 // ADMIN API ROUTES
 // -----------------------------
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
+    Route::get('/me', [AdminAuthController::class, 'me']);
     Route::get('/dashboard', [AdminDashboardController::class, 'dashboardData']);
 
     // special routes first
@@ -69,6 +68,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/payments/stats', [PaymentManagementController::class, 'stats']);
     Route::get('/payments/method-stats', [PaymentManagementController::class, 'methodStats']);
     Route::get('/payments/export', [PaymentManagementController::class, 'exportReport']);
+    Route::get('/refunds/stats', [RefundManagementController::class, 'stats']);
+    Route::get('/refunds/export', [RefundManagementController::class, 'exportReport']);
 
     // users
     Route::get('/users', [UserManagementController::class, 'getUsersData']);
@@ -101,18 +102,16 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::post('/payments/{id}/verify', [PaymentManagementController::class, 'verify']);
     Route::post('/payments/{id}/mark-failed', [PaymentManagementController::class, 'markAsFailed']);
     Route::post('/payments/{id}/update', [PaymentManagementController::class, 'update']);
-    Route::post('/payments/{id}/delete', [PaymentManagementController::class, 'destroy']);
+    Route::delete('/payments/{id}', [PaymentManagementController::class, 'destroy']);
 
     // refunds
-    Route::get('/refunds/stats', [RefundManagementController::class, 'stats']);
-    Route::get('/refunds/export', [RefundManagementController::class, 'exportReport']);
     Route::get('/refunds', [RefundManagementController::class, 'index']);
     Route::get('/refunds/{id}', [RefundManagementController::class, 'show']);
     Route::post('/refunds/{id}/approve', [RefundManagementController::class, 'approve']);
     Route::post('/refunds/{id}/reject', [RefundManagementController::class, 'reject']);
     Route::post('/refunds/{id}/complete', [RefundManagementController::class, 'complete']);
     Route::post('/refunds/{id}/update', [RefundManagementController::class, 'update']);
-    Route::post('/refunds/{id}/delete', [RefundManagementController::class, 'destroy']);
+    Route::delete('/refunds/{id}', [RefundManagementController::class, 'destroy']);
 
     // reports
     Route::get('/reports', [ReportsController::class, 'index']);
@@ -124,4 +123,6 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::post('/profile/update-password', [AdminProfileController::class, 'updatePassword']);
     Route::post('/profile/upload-photo', [AdminProfileController::class, 'uploadPhoto']);
     Route::post('/profile/delete-photo', [AdminProfileController::class, 'deletePhoto']);
+
+    Route::post('/logout', [AdminAuthController::class, 'logout']);
 });

@@ -57,10 +57,11 @@ const logout = async () => {
 
 <template>
   <aside
-    class="fixed inset-y-0 left-0 z-50 w-64 flex-shrink-0 overflow-y-auto transition-all duration-300 md:static md:translate-x-0"
+    class="fixed inset-y-0 left-0 z-50 w-64 min-w-[16rem] max-w-[16rem] basis-[16rem] shrink-0 overflow-y-auto transition-all duration-300 md:static md:translate-x-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
     style="background-color: var(--primary-dark);"
-  >
+>
+
     <div class="p-6">
       <div class="mb-8 flex justify-center">
         <div class="flex flex-col items-center text-center">

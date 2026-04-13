@@ -146,9 +146,20 @@ const submitCancelBooking = async () => {
   success.value = ''
 
   try {
-    const { data } = await api.post(`/api/user/bookings/${selectedBooking.value.id}/cancel`, {
-      reason: cancelForm.reason,
-    })
+    await api.get('/sanctum/csrf-cookie')
+
+    const { data } = await api.post(
+      `/api/user/bookings/${selectedBooking.value.id}/cancel`,
+      {
+        reason: cancelForm.reason,
+      },
+      {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          Accept: 'application/json',
+        },
+      }
+    )
 
     if (data?.success) {
       success.value = data.message || 'Booking cancelled successfully.'
@@ -194,7 +205,6 @@ onMounted(() => {
       {{ error }}
     </div>
 
-    <!-- Header -->
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">
@@ -211,7 +221,6 @@ onMounted(() => {
       </router-link>
     </div>
 
-    <!-- Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
       <div class="bg-white rounded-lg shadow-lg p-6">
         <div class="flex items-center">
@@ -262,7 +271,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Table -->
     <div class="bg-white rounded-lg shadow-lg overflow-hidden">
       <div class="p-6 border-b border-gray-200">
         <h3 class="text-xl font-bold text-gray-800">
@@ -390,6 +398,7 @@ onMounted(() => {
 
                   <button
                     v-if="canCancelBooking(booking)"
+                    type="button"
                     class="text-red-600 hover:text-red-900 font-semibold"
                     title="Cancel Booking"
                     @click="openCancelModal(booking)"
@@ -398,6 +407,7 @@ onMounted(() => {
                   </button>
 
                   <button
+                    type="button"
                     class="text-gray-600 hover:text-gray-900"
                     title="View Details"
                     @click="openDetailsModal(booking)"
@@ -438,6 +448,7 @@ onMounted(() => {
 
           <div class="flex gap-2">
             <button
+              type="button"
               class="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition disabled:opacity-50"
               :disabled="pagination.current_page === 1"
               @click="goToPage(pagination.current_page - 1)"
@@ -446,6 +457,7 @@ onMounted(() => {
             </button>
 
             <button
+              type="button"
               class="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition disabled:opacity-50"
               :disabled="pagination.current_page === pagination.last_page"
               @click="goToPage(pagination.current_page + 1)"
@@ -457,7 +469,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Booking Details Modal -->
     <div
       v-if="detailsModalOpen"
       class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
@@ -465,7 +476,7 @@ onMounted(() => {
       <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-xl font-bold text-gray-800">Booking Details</h3>
-          <button @click="closeDetailsModal" class="text-gray-400 hover:text-gray-600">
+          <button type="button" @click="closeDetailsModal" class="text-gray-400 hover:text-gray-600">
             <i class="fas fa-times text-xl"></i>
           </button>
         </div>
@@ -523,7 +534,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Cancel Modal -->
     <div
       v-if="cancelModalOpen"
       class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
@@ -531,7 +541,7 @@ onMounted(() => {
       <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-xl font-bold text-gray-800">Cancel Booking</h3>
-          <button @click="closeCancelModal" class="text-gray-400 hover:text-gray-600">
+          <button type="button" @click="closeCancelModal" class="text-gray-400 hover:text-gray-600">
             <i class="fas fa-times text-xl"></i>
           </button>
         </div>
@@ -556,14 +566,16 @@ onMounted(() => {
 
           <div class="flex items-center justify-end space-x-3 pt-4 border-t">
             <button
-              @click="closeCancelModal"
+              type="button"
+              @click.prevent="closeCancelModal"
               class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
             >
               Back
             </button>
 
             <button
-              @click="submitCancelBooking"
+              type="button"
+              @click.prevent="submitCancelBooking"
               :disabled="cancelling"
               class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
             >

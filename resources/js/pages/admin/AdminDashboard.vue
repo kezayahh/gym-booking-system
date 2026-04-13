@@ -43,7 +43,10 @@ const formatNumber = (value) => {
 }
 
 const formatCurrency = (value) => {
-  return `₱${formatNumber(value)}`
+  return `₱${Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 const formatStatus = (status) => {
@@ -96,8 +99,8 @@ const renderMonthlyRevenueChart = () => {
     : []
 
   const sortedRevenueData = revenueData.sort((a, b) => {
-    const dateA = new Date(a.month || a.month_label || '')
-    const dateB = new Date(b.month || b.month_label || '')
+    const dateA = new Date(`${a.month || ''}-01`)
+    const dateB = new Date(`${b.month || ''}-01`)
     return dateA - dateB
   })
 
@@ -397,7 +400,7 @@ onBeforeUnmount(() => {
             <i class="fas fa-chart-bar mr-2 text-blue-500"></i>Booking Statistics
           </h3>
 
-          <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div class="grid grid-cols-2 gap-4 md:grid-cols-5">
             <div class="rounded-lg bg-yellow-50 p-4 text-center">
               <div class="text-3xl font-bold text-yellow-600">
                 {{ dashboard.bookingStats.pending }}
@@ -424,6 +427,13 @@ onBeforeUnmount(() => {
                 {{ dashboard.bookingStats.cancelled }}
               </div>
               <div class="mt-1 text-sm text-gray-600">Cancelled</div>
+            </div>
+
+            <div class="rounded-lg bg-gray-50 p-4 text-center">
+              <div class="text-3xl font-bold text-gray-600">
+                {{ dashboard.bookingStats.no_show }}
+              </div>
+              <div class="mt-1 text-sm text-gray-600">No Show</div>
             </div>
           </div>
         </div>

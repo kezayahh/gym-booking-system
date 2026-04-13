@@ -24,7 +24,14 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkCreateModal = ref(false)
 
-const today = new Date().toISOString().split('T')[0]
+function getLocalDateString(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const today = getLocalDateString()
 
 const days = [
   'Sunday',
@@ -86,9 +93,23 @@ function normalizeDate(date) {
   return String(date).length > 10 ? String(date).substring(0, 10) : String(date)
 }
 
+function parseLocalDate(date) {
+  if (!date) return null
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [year, month, day] = date.split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
+  const parsed = new Date(date)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 function formatDate(date) {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('en-PH', {
+  const parsed = parseLocalDate(date)
+  if (!parsed) return ''
+
+  return parsed.toLocaleDateString('en-PH', {
     month: 'short',
     day: '2-digit',
     year: 'numeric',
@@ -96,8 +117,10 @@ function formatDate(date) {
 }
 
 function formatDay(date) {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('en-PH', { weekday: 'long' })
+  const parsed = parseLocalDate(date)
+  if (!parsed) return ''
+
+  return parsed.toLocaleDateString('en-PH', { weekday: 'long' })
 }
 
 function formatMoney(value) {
@@ -210,9 +233,14 @@ async function submitCreateSchedule() {
   saving.value = true
 
   try {
-    const response = await adminApi.post('/schedules', {
+    const payload = {
       ...createForm,
-    })
+      date: normalizeDate(createForm.date),
+      total_capacity: Number(createForm.total_capacity),
+      price_per_slot: Number(createForm.price_per_slot),
+    }
+
+    const response = await adminApi.post('/schedules', payload)
 
     if (response.data?.success) {
       alert(response.data.message || 'Schedule created successfully.')
@@ -223,7 +251,11 @@ async function submitCreateSchedule() {
     }
   } catch (err) {
     console.error(err)
-    alert(err?.response?.data?.message || 'An error occurred. Please try again.')
+    alert(
+      err?.response?.data?.message ||
+      err?.response?.data?.errors?.date?.[0] ||
+      'An error occurred. Please try again.'
+    )
   } finally {
     saving.value = false
   }
@@ -234,8 +266,8 @@ async function submitBulkCreate() {
 
   try {
     const payload = {
-      start_date: bulkForm.start_date,
-      end_date: bulkForm.end_date,
+      start_date: normalizeDate(bulkForm.start_date),
+      end_date: normalizeDate(bulkForm.end_date),
       days_of_week: bulkForm.days_of_week.map(Number),
       time_slots: bulkForm.time_slots.map((slot) => ({
         start_time: slot.start_time,
@@ -309,6 +341,9 @@ async function submitEditSchedule() {
   try {
     const response = await adminApi.put(`/schedules/${editForm.id}`, {
       ...editForm,
+      date: normalizeDate(editForm.date),
+      total_capacity: Number(editForm.total_capacity),
+      price_per_slot: Number(editForm.price_per_slot),
       status: 'available',
     })
 
@@ -321,7 +356,11 @@ async function submitEditSchedule() {
     }
   } catch (err) {
     console.error(err)
-    alert(err?.response?.data?.message || 'An error occurred. Please try again.')
+    alert(
+      err?.response?.data?.message ||
+      err?.response?.data?.errors?.date?.[0] ||
+      'An error occurred. Please try again.'
+    )
   } finally {
     saving.value = false
   }
@@ -702,6 +741,7 @@ onMounted(() => {
                 v-model="editForm.date"
                 type="date"
                 required
+                :min="today"
                 class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -822,7 +862,7 @@ onMounted(() => {
               <label
                 v-for="(day, index) in days"
                 :key="index"
-                class="cursor-pointer rounded border p-2 hover:bg-gray-50 flex items-center space-x-2"
+                class="flex cursor-pointer items-center space-x-2 rounded border p-2 hover:bg-gray-50"
               >
                 <input
                   v-model="bulkForm.days_of_week"

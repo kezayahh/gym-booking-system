@@ -78,6 +78,7 @@ const submit = async () => {
             placeholder="Enter your admin email"
             required
             autofocus
+            autocomplete="email"
           >
         </div>
 
@@ -92,6 +93,7 @@ const submit = async () => {
             class="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Enter your password"
             required
+            autocomplete="current-password"
           >
         </div>
 
@@ -115,9 +117,10 @@ const submit = async () => {
         </button>
       </form>
     </div>
-        <div class="mt-4 text-center text-white text-sm bg-black bg-opacity-30 rounded-lg p-3">
+
+    <div class="mt-4 rounded-lg bg-black bg-opacity-30 p-3 text-center text-sm text-white">
       <i class="fas fa-info-circle mr-1"></i>
-      <strong>Test Admin:</strong> admin@citygym.com / admin12345
-        </div>
+      <strong>Test Admin:</strong> admin@citygym.com / admin123
+    </div>
   </div>
 </template>

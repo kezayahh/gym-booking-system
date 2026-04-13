@@ -14,4 +14,12 @@ const api = axios.create({
   xsrfHeaderName: 'X-XSRF-TOKEN',
 })
 
+// Optional response handler for auth/session expiry
+api.interceptors.response.use(
+  response => response,
+  error => {
+    return Promise.reject(error)
+  }
+)
+
 export default api
